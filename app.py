@@ -120,25 +120,36 @@ if st.button("Analisis Keamanan", type="primary"):
             prediksi = model.predict(df_fitur)[0]
             probabilitas = model.predict_proba(df_fitur)[0]
             
-        st.markdown("---")
-        st.subheader("Hasil Analisis")
-        
-        # Tampilan Hasil
-        if prediksi == 1:
-            st.error("🚨 **PERINGATAN! Domain Terindikasi PHISHING.**")
-            st.metric("Tingkat Keyakinan (Phishing)", f"{probabilitas[1]*100:.2f}%")
-        else:
-            st.success("✅ **AMAN. Domain Terindikasi Normal/Sah.**")
-            st.metric("Tingkat Keyakinan (Aman)", f"{probabilitas[0]*100:.2f}%")
+            # =====================================================================
+            # 4. KEAMANAN LAPIS KEDUA: RULE-BASED OVERRIDE (HYBRID SYSTEM)
+            # =====================================================================
+            alasan_override = ""
             
-        # Penjelasan Fitur
-        st.markdown("### 📊 Indikator Jarak String (XAI)")
-        st.info(f"💡 **Analisis Sistem:** Domain ini dicurigai menargetkan/memiliki kemiripan ejaan dengan entitas: **`{target_mirip}`**")
+            # Jika ML bilang AMAN (0), tapi metrik jarak sangat mencurigakan:
+            if prediksi == 0:
+                # Kondisi 1: Beda 1-2 huruf DAN mengandung angka/homoglyph (contoh: g00gle.com)
+                if (lev <= 2) and (jw >= 0.90) and (df_fitur['homoglyph_count'].values[0] > 0 or df_fitur['digit_count'].values[0] > 0):
+                    prediksi = 1
+                    probabilitas[1] = 0.95 # Paksa keyakinan jadi 95%
+                    alasan_override = "Terdeteksi penggantian karakter visual (Homoglyph Typosquatting) pada entitas populer."
+                
+                # Kondisi 2: Ejaan sangat identik, beda 1 huruf saja (contoh: facebok.com)
+                elif (lev == 1) and (jw >= 0.95):
+                    prediksi = 1
+                    probabilitas[1] = 0.92
+                    alasan_override = "Terdeteksi kemiripan ejaan yang sangat identik (selisih 1 huruf) dengan entitas populer."
+                    
+        # ==============================================================================
+        # 5. TAMPILKAN HASIL PREDIKSI
+        # ==============================================================================
+        st.markdown("---")
+        st.subheader("Hasil Analisis:")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(label="Levenshtein Distance", value=int(lev), help="Makin kecil angka (mendekati 1-3), makin identik/berbahaya.")
-        with col2:
-            st.metric(label="Jaro-Winkler Score", value=f"{jw:.4f}", help="Makin mendekati 1.0, makin mirip secara visual dan fonetik.")
-    else:
-        st.warning("Silakan masukkan nama domain terlebih dahulu!")
+        if prediksi == 1:
+            st.error(f"🚨 **PERINGATAN: Domain ini Terindikasi PHISHING / TYPOSQUATTING!**")
+            st.metric(label="Tingkat Keyakinan Sistem", value=f"{probabilitas[1]*100:.2f}%")
+            if alasan_override:
+                st.warning(f"⚠️ **Intervensi Sistem Pakar:** {alasan_override}")
+        else:
+            st.success(f"✅ **AMAN: Domain ini Teridentifikasi NORMAL / SAH.**")
+            st.metric(label="Tingkat Keyakinan Sistem", value=f"{probabilitas[0]*100:.2f}%")
