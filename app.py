@@ -27,7 +27,7 @@ except Exception as e:
     st.stop()
 
 # ============================================================
-# KONFIGURASI FITUR (SAMA SEPERTI SAAT TRAINING)
+# KONFIGURASI FITUR
 # ============================================================
 COMMON_TLDS = {"com", "org", "net", "edu", "gov", "id", "co", "io", "ac", "uk", "us", "au", "de", "fr", "jp"}
 TLD_ABUSE_SCORE = {
@@ -38,9 +38,6 @@ TLD_ABUSE_SCORE = {
 SUSPICIOUS_KEYWORDS = ["login", "secure", "update", "verify", "account", "banking", "payment", "confirm", "signin", "support", "service", "access", "portal", "wallet", "checkout"]
 HOMOGLYPH_MAP = {"0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "6": "g", "7": "t", "8": "b", "vv": "w", "rn": "m"}
 
-# ============================================================
-# FUNGSI EKSTRAKSI (DIAMBIL DARI SKRIP ANDA)
-# ============================================================
 def get_entropy(s: str) -> float:
     if not s: return 0.0
     freq = {c: s.count(c) / len(s) for c in set(s)}
@@ -59,18 +56,17 @@ def extract_features(domain: str) -> pd.DataFrame:
         domain = urlparse(domain).netloc
     domain = domain.split("/")[0].split("?")[0].split("#")[0].split(":")[0]
     
-parts = domain.split(".")
+    parts = domain.split(".")
     tld = parts[-1] if len(parts) >= 2 else ""
     
     # PERBAIKAN: Deteksi ekstensi ganda (seperti .co.id, .ac.uk, .com.au)
     if len(parts) >= 3 and parts[-2] in ['co', 'com', 'net', 'org', 'ac', 'go', 'sch', 'web']:
-        sld = parts[-3] # Ambil nama utamanya (contoh: 'y0utube' dari y0utube.co.id)
+        sld = parts[-3] 
     else:
         sld = parts[-2] if len(parts) >= 2 else domain  
         
     subdomain_count = max(0, len(parts) - 2)
 
-    # Menghitung Jarak String
     min_lev, min_dam_lev, max_jw, max_sim = float("inf"), float("inf"), 0.0, 0.0
     target_mirip = "Tidak ada"
 
@@ -89,7 +85,6 @@ parts = domain.split(".")
             max_jw = jw
             target_mirip = brand
 
-    # Menyusun fitur dalam bentuk DataFrame (agar sesuai dengan input Scikit-Learn)
     fitur_dict = {
         "domain_length": [len(domain)],
         "digit_count": [sum(c.isdigit() for c in sld)],
@@ -119,21 +114,18 @@ input_domain = st.text_input("Masukkan URL atau Nama Domain:", placeholder="cont
 if st.button("Analisis Keamanan", type="primary"):
     if input_domain:
         with st.spinner("Mengekstrak fitur dan menganalisis metrik..."):
-            # Ekstraksi Fitur
             df_fitur, target_mirip, lev, jw = extract_features(input_domain)
             
-            # 3. Prediksi dengan Model
             prediksi = model.predict(df_fitur)[0]
             probabilitas = model.predict_proba(df_fitur)[0]
             
             # =====================================================================
-            # 4. KEAMANAN LAPIS KEDUA: RULE-BASED OVERRIDE (HYBRID SYSTEM)
+            # KEAMANAN LAPIS KEDUA: RULE-BASED OVERRIDE (HYBRID SYSTEM)
             # =====================================================================
             alasan_override = ""
             
             if prediksi == 0:
                 # Kondisi 1: Beda 1-2 huruf DAN mengandung angka/homoglyph (Misal: 4pple.com, y0utube.co.id)
-                # Kita LEPASKAN syarat Jaro-Winkler karena huruf pertama yang diganti akan merusak skor JW
                 if (lev <= 2) and (df_fitur['homoglyph_count'].values[0] > 0 or df_fitur['digit_count'].values[0] > 0):
                     prediksi = 1
                     probabilitas[1] = 0.98
@@ -144,10 +136,7 @@ if st.button("Analisis Keamanan", type="primary"):
                     prediksi = 1
                     probabilitas[1] = 0.92
                     alasan_override = "Terdeteksi kemiripan ejaan yang sangat identik (selisih 1 huruf) dengan entitas populer."
-                    
-        # ==============================================================================
-        # 5. TAMPILKAN HASIL PREDIKSI
-        # ==============================================================================
+            
         st.markdown("---")
         st.subheader("Hasil Analisis:")
         
@@ -159,3 +148,14 @@ if st.button("Analisis Keamanan", type="primary"):
         else:
             st.success(f"✅ **AMAN: Domain ini Teridentifikasi NORMAL / SAH.**")
             st.metric(label="Tingkat Keyakinan Sistem", value=f"{probabilitas[0]*100:.2f}%")
+            
+        st.markdown("### 📊 Indikator Jarak String (XAI)")
+        st.info(f"💡 **Analisis Sistem:** Domain ini dicurigai menargetkan/memiliki kemiripan ejaan dengan entitas: **`{target_mirip}`**")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Levenshtein Distance", value=int(lev), help="Makin kecil angka (mendekati 1-3), makin identik/berbahaya.")
+        with col2:
+            st.metric(label="Jaro-Winkler Score", value=f"{jw:.4f}", help="Makin mendekati 1.0, makin mirip secara visual dan fonetik.")
+    else:
+        st.warning("Silakan masukkan nama domain terlebih dahulu!")
