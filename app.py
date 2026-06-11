@@ -122,7 +122,7 @@ if st.button("Analisis Keamanan", type="primary"):
             # Ekstraksi Fitur
             df_fitur, target_mirip, lev, jw = extract_features(input_domain)
             
-            # Prediksi dengan Model
+            # 3. Prediksi dengan Model
             prediksi = model.predict(df_fitur)[0]
             probabilitas = model.predict_proba(df_fitur)[0]
             
@@ -131,16 +131,16 @@ if st.button("Analisis Keamanan", type="primary"):
             # =====================================================================
             alasan_override = ""
             
-            # Jika ML bilang AMAN (0), tapi metrik jarak sangat mencurigakan:
             if prediksi == 0:
-                # Kondisi 1: Beda 1-2 huruf DAN mengandung angka/homoglyph (contoh: g00gle.com)
-                if (lev <= 2) and (jw >= 0.90) and (df_fitur['homoglyph_count'].values[0] > 0 or df_fitur['digit_count'].values[0] > 0):
+                # Kondisi 1: Beda 1-2 huruf DAN mengandung angka/homoglyph (Misal: 4pple.com, y0utube.co.id)
+                # Kita LEPASKAN syarat Jaro-Winkler karena huruf pertama yang diganti akan merusak skor JW
+                if (lev <= 2) and (df_fitur['homoglyph_count'].values[0] > 0 or df_fitur['digit_count'].values[0] > 0):
                     prediksi = 1
-                    probabilitas[1] = 0.95 # Paksa keyakinan jadi 95%
-                    alasan_override = "Terdeteksi penggantian karakter visual (Homoglyph Typosquatting) pada entitas populer."
+                    probabilitas[1] = 0.98
+                    alasan_override = "Terdeteksi penggantian karakter visual (Homoglyph) pada entitas populer."
                 
-                # Kondisi 2: Ejaan sangat identik, beda 1 huruf saja (contoh: facebok.com)
-                elif (lev == 1) and (jw >= 0.95):
+                # Kondisi 2: Ejaan meleset 1 huruf saja, murni huruf tanpa angka (Misal: facebok.com)
+                elif (lev == 1):
                     prediksi = 1
                     probabilitas[1] = 0.92
                     alasan_override = "Terdeteksi kemiripan ejaan yang sangat identik (selisih 1 huruf) dengan entitas populer."
