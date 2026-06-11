@@ -59,9 +59,15 @@ def extract_features(domain: str) -> pd.DataFrame:
         domain = urlparse(domain).netloc
     domain = domain.split("/")[0].split("?")[0].split("#")[0].split(":")[0]
     
-    parts = domain.split(".")
+parts = domain.split(".")
     tld = parts[-1] if len(parts) >= 2 else ""
-    sld = parts[-2] if len(parts) >= 2 else domain  
+    
+    # PERBAIKAN: Deteksi ekstensi ganda (seperti .co.id, .ac.uk, .com.au)
+    if len(parts) >= 3 and parts[-2] in ['co', 'com', 'net', 'org', 'ac', 'go', 'sch', 'web']:
+        sld = parts[-3] # Ambil nama utamanya (contoh: 'y0utube' dari y0utube.co.id)
+    else:
+        sld = parts[-2] if len(parts) >= 2 else domain  
+        
     subdomain_count = max(0, len(parts) - 2)
 
     # Menghitung Jarak String
